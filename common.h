@@ -22,6 +22,22 @@ typedef struct {
     char *val;
 } zend_string;
 
+#define ZSTR_VAL(s) (s)->val
+#define ZSTR_LEN(s) (s)->len
+
+static zend_always_inline zend_string *
+zend_string_init(const char *str, size_t len, int persistent)
+{
+    zend_string *zstr = emalloc(sizeof(zend_string) + len + 1);
+
+    ZSTR_VAL(zstr) = (char *)zstr + sizeof(zend_string);
+    memcpy(ZSTR_VAL(zstr), str, len);
+    ZSTR_VAL(zstr)[len] = '\0';
+    zstr->len = len;
+    zstr->gc = 0x01;
+    return zstr;
+}
+
 #define zend_string_release(s) do { \
     if ((s) && (s)->gc) { \
         if ((s)->gc & 0x10 && (s)->val) efree((s)->val); \
@@ -210,7 +226,7 @@ extern int (*_add_next_index_stringl)(zval *, const char *, uint, int);
 
 #undef ZVAL_STRING
 #define ZVAL_STRING(z, s) do { \
-    const char *_s=(s); \
+    const char *_s = (s); \
     ZVAL_STRINGL(z, _s, strlen(_s)); \
 } while (0)
 #undef RETVAL_STRING
@@ -219,16 +235,20 @@ extern int (*_add_next_index_stringl)(zval *, const char *, uint, int);
 #define RETURN_STRING(s) { RETVAL_STRING(s); return; }
 #undef ZVAL_STRINGL
 #define ZVAL_STRINGL(z, s, l) do { \
-    const char *__s=(s); int __l=l; \
+    const char *__s = (s); int __l = l; \
     zval *__z = (z); \
     Z_STRLEN_P(__z) = __l; \
     Z_STRVAL_P(__z) = estrndup(__s, __l); \
     Z_TYPE_P(__z) = IS_STRING; \
-} while(0)
+} while (0)
 #undef RETVAL_STRINGL
 #define RETVAL_STRINGL(s, l) ZVAL_STRINGL(return_value, s, l)
 #undef RETURN_STRINGL
 #define RETURN_STRINGL(s, l) { RETVAL_STRINGL(s, l); return; }
+
+#define ZVAL_STR(z, s) ZVAL_STRINGL(z, ZSTR_VAL(s), ZSTR_LEN(s))
+#define RETVAL_STR(s) ZVAL_STR(return_value, s)
+#define RETURN_STR(s) { RETVAL_STR(s); return; }
 
 static int (*_call_user_function)(HashTable *, zval **, zval *, zval *, zend_uint, zval *[] TSRMLS_DC) = &call_user_function;
 #define call_user_function(function_table, object, function_name, retval_ptr, param_count, params) \
@@ -601,7 +621,7 @@ typedef struct {
     php_stream     *stream;
     char           *host;
     short          port;
-    char           *auth;
+    zend_string    *auth;
     double         timeout;
     double         read_timeout;
     long           retry_interval;
@@ -609,13 +629,12 @@ typedef struct {
     int            status;
     int            persistent;
     int            watching;
-    char           *persistent_id;
+    zend_string    *persistent_id;
 
     int            serializer;
     long           dbNumber;
 
-    char           *prefix;
-    int            prefix_len;
+    zend_string    *prefix;
 
     redis_mode     mode;
     fold_item      *head;
@@ -624,8 +643,8 @@ typedef struct {
     char           *pipeline_cmd;
     size_t         pipeline_len;
 
-    char           *err;
-    int            err_len;
+    zend_string    *err;
+
     zend_bool      lazy_connect;
 
     int            scan;

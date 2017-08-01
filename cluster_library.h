@@ -59,11 +59,13 @@
     }
 
 /* Clear out our "last error" */
-#define CLUSTER_CLEAR_ERROR(c) \
-    if(c->err) efree(c->err); \
-    c->err = NULL; \
-    c->err_len = 0; \
-    c->clusterdown = 0;
+#define CLUSTER_CLEAR_ERROR(c) do { \
+    if (c->err) { \
+        zend_string_release(c->err); \
+        c->err = NULL; \
+    } \
+    c->clusterdown = 0; \
+} while (0)
 
 /* Protected sending of data down the wire to a RedisSock->stream */
 #define CLUSTER_SEND_PAYLOAD(sock, buf, len) \
@@ -216,8 +218,7 @@ typedef struct redisCluster {
     short clusterdown;
 
     /* The last ERROR we encountered */
-    char *err;
-    int err_len;
+    zend_string *err;
 
     /* The slot our command is operating on, as well as it's socket */
     unsigned short cmd_slot;

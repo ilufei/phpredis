@@ -334,7 +334,7 @@ free_cluster_context(zend_object *object) {
     zend_hash_destroy(cluster->nodes);
     efree(cluster->nodes);
 
-    if(cluster->err) efree(cluster->err);
+    if (cluster->err) zend_string_release(cluster->err);
 
     zend_object_std_dtor(&cluster->std TSRMLS_CC);
 
@@ -1904,11 +1904,10 @@ PHP_METHOD(RedisCluster, getmode) {
 PHP_METHOD(RedisCluster, getlasterror) {
     redisCluster *c = GET_CONTEXT();
 
-    if(c->err != NULL && c->err_len > 0) {
-        RETURN_STRINGL(c->err, c->err_len);
-    } else {
-        RETURN_NULL();
+    if (c->err) {
+        RETURN_STRINGL(ZSTR_VAL(c->err), ZSTR_LEN(c->err));
     }
+    RETURN_NULL();
 }
 /* }}} */
 
@@ -1916,9 +1915,10 @@ PHP_METHOD(RedisCluster, getlasterror) {
 PHP_METHOD(RedisCluster, clearlasterror) {
     redisCluster *c = GET_CONTEXT();
     
-    if (c->err) efree(c->err);
-    c->err = NULL;
-    c->err_len = 0;
+    if (c->err) {
+        zend_string_release(c->err);
+        c->err = NULL;
+    }
     
     RETURN_TRUE;
 }

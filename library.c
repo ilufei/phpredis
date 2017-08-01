@@ -83,7 +83,7 @@ static int resend_auth(RedisSock *redis_sock TSRMLS_DC) {
     int cmd_len, response_len;
 
     cmd_len = redis_spprintf(redis_sock, NULL TSRMLS_CC, &cmd, "AUTH", "s",
-                             redis_sock->auth, strlen(redis_sock->auth));
+                             ZSTR_VAL(redis_sock->auth), ZSTR_LEN(redis_sock->auth));
 
     if (redis_sock_write(redis_sock, cmd, cmd_len TSRMLS_CC) < 0) {
         efree(cmd);
@@ -117,11 +117,11 @@ static void
 redis_error_throw(RedisSock *redis_sock TSRMLS_DC)
 {
     if (redis_sock != NULL && redis_sock->err != NULL &&
-        memcmp(redis_sock->err, "ERR", sizeof("ERR") - 1) != 0 &&
-        memcmp(redis_sock->err, "NOSCRIPT", sizeof("NOSCRIPT") - 1) != 0 &&
-        memcmp(redis_sock->err, "WRONGTYPE", sizeof("WRONGTYPE") - 1) != 0
+        memcmp(ZSTR_VAL(redis_sock->err), "ERR", sizeof("ERR") - 1) != 0 &&
+        memcmp(ZSTR_VAL(redis_sock->err), "NOSCRIPT", sizeof("NOSCRIPT") - 1) != 0 &&
+        memcmp(ZSTR_VAL(redis_sock->err), "WRONGTYPE", sizeof("WRONGTYPE") - 1) != 0
     ) {
-        zend_throw_exception(redis_exception_ce, redis_sock->err, 0 TSRMLS_CC);
+        zend_throw_exception(redis_exception_ce, ZSTR_VAL(redis_sock->err), 0 TSRMLS_CC);
     }
 }
 
@@ -1377,8 +1377,8 @@ redis_sock_create(char *host, int host_len, unsigned short port,
     redis_sock->lazy_connect = lazy_connect;
     redis_sock->persistent_id = NULL;
 
-    if(persistent_id) {
-        redis_sock->persistent_id = estrdup(persistent_id);
+    if (persistent_id) {
+        redis_sock->persistent_id = zend_string_init(persistent_id, strlen(persistent_id), 0);
     }
 
     redis_sock->port    = port;
@@ -1394,7 +1394,6 @@ redis_sock_create(char *host, int host_len, unsigned short port,
     redis_sock->pipeline_len = 0;
 
     redis_sock->err = NULL;
-    redis_sock->err_len = 0;
 
     redis_sock->scan = REDIS_SCAN_NORETRY;
 
@@ -1447,7 +1446,7 @@ PHP_REDIS_API int redis_sock_connect(RedisSock *redis_sock TSRMLS_DC)
     if (redis_sock->persistent) {
         if (redis_sock->persistent_id) {
             spprintf(&persistent_id, 0, "phpredis:%s:%s", host,
-                redis_sock->persistent_id);
+                ZSTR_VAL(redis_sock->persistent_id));
         } else {
             spprintf(&persistent_id, 0, "phpredis:%s:%f", host,
                 redis_sock->timeout);
@@ -1539,17 +1538,13 @@ redis_sock_set_err(RedisSock *redis_sock, const char *msg, int msg_len)
 {
     // Free our last error
     if (redis_sock->err != NULL) {
-        efree(redis_sock->err);
+        zend_string_release(redis_sock->err);
+        redis_sock->err = NULL;
     }
 
     if (msg != NULL && msg_len > 0) {
         // Copy in our new error message
-        redis_sock->err = estrndup(msg, msg_len);
-        redis_sock->err_len = msg_len;
-    } else {
-        // Set to null, with zero length
-        redis_sock->err = NULL;
-        redis_sock->err_len = 0;
+        redis_sock->err = zend_string_init(msg, msg_len, 0);
     }
 }
 
@@ -1757,20 +1752,20 @@ redis_sock_write(RedisSock *redis_sock, char *cmd, size_t sz TSRMLS_DC)
  */
 PHP_REDIS_API void redis_free_socket(RedisSock *redis_sock)
 {
-    if(redis_sock->prefix) {
-        efree(redis_sock->prefix);
+    if (redis_sock->prefix) {
+        zend_string_release(redis_sock->prefix);
     }
     if (redis_sock->pipeline_cmd) {
         efree(redis_sock->pipeline_cmd);
     }
-    if(redis_sock->err) {
-        efree(redis_sock->err);
+    if (redis_sock->err) {
+        zend_string_release(redis_sock->err);
     }
-    if(redis_sock->auth) {
-        efree(redis_sock->auth);
+    if (redis_sock->auth) {
+        zend_string_release(redis_sock->auth);
     }
-    if(redis_sock->persistent_id) {
-        efree(redis_sock->persistent_id);
+    if (redis_sock->persistent_id) {
+        zend_string_release(redis_sock->persistent_id);
     }
     efree(redis_sock->host);
     efree(redis_sock);
@@ -1929,14 +1924,14 @@ redis_key_prefix(RedisSock *redis_sock, char **key, strlen_t *key_len) {
     int ret_len;
     char *ret;
 
-    if(redis_sock->prefix == NULL || redis_sock->prefix_len == 0) {
+    if (redis_sock->prefix == NULL) {
         return 0;
     }
 
-    ret_len = redis_sock->prefix_len + *key_len;
+    ret_len = ZSTR_LEN(redis_sock->prefix) + *key_len;
     ret = ecalloc(1 + ret_len, 1);
-    memcpy(ret, redis_sock->prefix, redis_sock->prefix_len);
-    memcpy(ret + redis_sock->prefix_len, *key, *key_len);
+    memcpy(ret, ZSTR_VAL(redis_sock->prefix), ZSTR_LEN(redis_sock->prefix));
+    memcpy(ret + ZSTR_LEN(redis_sock->prefix), *key, *key_len);
 
     *key = ret;
     *key_len = ret_len;

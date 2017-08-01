@@ -1863,8 +1863,8 @@ int redis_auth_cmd(INTERNAL_FUNCTION_PARAMETERS, RedisSock *redis_sock,
     *cmd_len = REDIS_CMD_SPPRINTF(cmd, "AUTH", "s", pw, pw_len);
 
     // Free previously allocated password, and update
-    if(redis_sock->auth) efree(redis_sock->auth);
-    redis_sock->auth = estrndup(pw, pw_len);
+    if (redis_sock->auth) zend_string_release(redis_sock->auth);
+    redis_sock->auth = zend_string_init(pw, pw_len, 0);
 
     // Success
     return SUCCESS;
@@ -2965,8 +2965,8 @@ void redis_getoption_handler(INTERNAL_FUNCTION_PARAMETERS,
         case REDIS_OPT_SERIALIZER:
             RETURN_LONG(redis_sock->serializer);
         case REDIS_OPT_PREFIX:
-            if(redis_sock->prefix) {
-                RETURN_STRINGL(redis_sock->prefix, redis_sock->prefix_len);
+            if (redis_sock->prefix) {
+                RETURN_STR(redis_sock->prefix);
             }
             RETURN_NULL();
         case REDIS_OPT_READ_TIMEOUT:
@@ -3008,15 +3008,12 @@ void redis_setoption_handler(INTERNAL_FUNCTION_PARAMETERS,
             }
             break;
         case REDIS_OPT_PREFIX:
-            if(redis_sock->prefix) {
-                efree(redis_sock->prefix);
-            }
-            if(val_len == 0) {
+            if (redis_sock->prefix) {
+                zend_string_release(redis_sock->prefix);
                 redis_sock->prefix = NULL;
-                redis_sock->prefix_len = 0;
-            } else {
-                redis_sock->prefix = estrndup(val_str, val_len);
-                redis_sock->prefix_len = val_len;
+            }
+            if (val_str && val_len > 0) {
+                redis_sock->prefix = zend_string_init(val_str, val_len, 0);
             }
             RETURN_TRUE;
         case REDIS_OPT_READ_TIMEOUT:
@@ -3063,7 +3060,7 @@ void redis_prefix_handler(INTERNAL_FUNCTION_PARAMETERS, RedisSock *redis_sock) {
         RETURN_FALSE;
     }
 
-    if(redis_sock->prefix != NULL && redis_sock->prefix_len>0) {
+    if (redis_sock->prefix) {
         int keyfree = redis_key_prefix(redis_sock, &key, &key_len);
         RETVAL_STRINGL(key, key_len);
         if (keyfree) efree(key);
